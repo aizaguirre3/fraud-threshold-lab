@@ -1,0 +1,18 @@
+data/raw/
+data/interim/
+data/processed/
+artifacts/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+.DS_Store
+
+# Figures and summary tables are committed so the README renders on GitHub.
+!artifacts/figures/
+!artifacts/figures/*.png
+!artifacts/tables/
+!artifacts/tables/*.csv
+!artifacts/tables/*.json
+!artifacts/false_positive_profile.md

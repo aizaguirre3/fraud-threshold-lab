@@ -1,0 +1,47 @@
+{
+  "join": {
+    "n_transactions": 590540,
+    "n_identity_rows": 144233,
+    "n_matched": 144233,
+    "identity_coverage_pct": 24.42,
+    "fraud_rate_with_identity_pct": 7.847,
+    "fraud_rate_without_identity_pct": 2.094,
+    "identity_missingness_is_signal": true
+  },
+  "profile": {
+    "n_rows": 590540,
+    "n_columns": 435,
+    "n_fraud": 20663,
+    "fraud_rate_pct": 3.499,
+    "imbalance_ratio": 27.6,
+    "time_span_days": 182.0,
+    "time_min_raw": 86400,
+    "time_max_raw": 15811131,
+    "columns_over_50pct_missing": 214,
+    "columns_over_90pct_missing": 12,
+    "mean_missingness_pct": 44.97,
+    "categorical_columns": 31,
+    "max_categorical_cardinality": 1786,
+    "total_amount": 79738936.0,
+    "total_fraud_amount": 3083845.0,
+    "fraud_amount_share_pct": 3.867,
+    "median_amount": 68.77,
+    "median_fraud_amount": 75.0
+  },
+  "split": {
+    "time_col": "TransactionDT",
+    "train_rows": 413378,
+    "val_rows": 88581,
+    "test_rows": 88581,
+    "train_end_dt_raw": 10437998.1,
+    "val_end_dt_raw": 13151845.999999998,
+    "train_end_day": 120.81,
+    "val_end_day": 152.22,
+    "train_fraud_rate_pct": 3.517,
+    "train_fraud_dollars": 2117328.75,
+    "val_fraud_rate_pct": 3.434,
+    "val_fraud_dollars": 496907.56,
+    "test_fraud_rate_pct": 3.48,
+    "test_fraud_dollars": 469608.5
+  }
+}
