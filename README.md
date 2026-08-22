@@ -114,16 +114,18 @@ opposite of the default advice.
 ### What a naive validation setup would have reported
 
 The time-aware split is the single most consequential decision in this project,
-so it is measured rather than asserted. Four variants, identical features, model,
-seed, and split proportions — only row assignment and aggregate provenance differ
+so it is measured rather than asserted. Six variants share an identical model,
+seed, and split proportions; only row assignment and feature provenance differ
 (`make split-comparison`):
 
-| Split | Aggregates fit on | ROC AUC | PR AUC | vs honest |
-|---|---|---|---|---|
-| **Time-aware** | **training window** | **0.9097** | **0.5524** | — |
-| Time-aware | entire dataset | 0.9096 | 0.5559 | +0.6% |
-| Random | random training subset | 0.9673 | 0.8281 | **+49.9%** |
-| Random | entire dataset | 0.9676 | 0.8298 | **+50.2%** |
+| | Split | Features fit on | ROC AUC | PR AUC | vs honest |
+|---|---|---|---|---|---|
+| **A** | **Time-aware** | **training window** | **0.9097** | **0.5524** | — |
+| B | Random | random training subset | 0.9673 | 0.8281 | **+49.9%** |
+| C | Random | entire dataset | 0.9676 | 0.8298 | **+50.2%** |
+| D | Time-aware | entire dataset | 0.9096 | 0.5559 | +0.6% |
+| E | Time-aware | + target encoding, done correctly | 0.8971 | 0.5406 | **−2.1%** |
+| F | Time-aware | + target encoding, fit on everything | 0.9595 | 0.6734 | **+21.9%** |
 
 **A random split would have reported PR AUC 0.83 instead of 0.55 — a 50%
 overstatement of the model's real forward-looking performance.** ROC AUC inflates
@@ -136,21 +138,38 @@ transactions in training and its earlier ones in test, so the model scores
 behaviour it has already seen the future of. That is not a subtle statistical
 nicety — it is half the reported performance.
 
-**A negative result about this project's own design.** Splitting on time is
-worth 50% of PR AUC. Fitting the behavioural aggregates on the whole dataset
-instead of the training window is worth **+0.6%**, which is inside run-to-run
-noise. The provenance machinery in `leakage.py` — the fitted index carried on
-`AggregateMaps`, the assertion in `build_features` — buys almost no measurable
-protection here.
+### The provenance guard, and the feature that justifies it
 
-It is kept anyway, and the reason is specific rather than defensive: these
-aggregates are counts and amount statistics, which are not target-derived.
-Contaminating a card's mean transaction amount with test-period rows barely
-moves it. The moment anyone adds a per-card *fraud rate* — the most natural next
-feature, and one this codebase invites — the same leak becomes catastrophic
-rather than negligible. The guard is insurance against the feature nobody has
-written yet, and this table is the honest statement of what it currently costs
-and currently returns.
+Cell D is uncomfortable. Fitting the behavioural aggregates on the whole dataset
+rather than the training window is worth **+0.6%** — inside run-to-run noise. On
+the count-and-amount features, the provenance machinery in `leakage.py` buys no
+measurable protection at all. Those aggregates are not target-derived, and
+contaminating a card's mean transaction amount with test-period rows barely
+moves it.
+
+Cells E and F are why the guard exists, and together they are the most useful
+result in this project.
+
+**Target encoding — per-card and per-address fraud rates — is the obvious next
+feature, and it does not work.** Fit correctly (training window only, out-of-fold
+within it) it makes the model **worse**: PR AUC 0.5406 against 0.5524. A card's
+fraud rate from months ago does not survive the 31-day gap between the end of
+training and the start of test. Fraud moves; card-level history goes stale.
+
+**Fit carelessly, the same feature looks excellent.** Compute those rates over
+the whole dataset before splitting — a one-line difference, and the most common
+mistake in applied fraud modelling — and PR AUC jumps to 0.6734, **+21.9%**.
+
+So the feature that contributes *nothing* produces the *largest* illusory gain
+in this table when leaked. An analyst who adds target encoding without
+provenance discipline sees +21.9%, ships it, and is wrong by 24 points about
+their own model. That gap — between the +21.9% you would believe and the −2.1%
+that is true — is exactly what the guard is for, and it does not show up at all
+if you only test the guard against features that never touch the label.
+
+Target encoding is implemented (`fit_target_encoders`, with smoothing and
+out-of-fold computation) and is **off by default**, because measured honestly it
+costs 2.1% of PR AUC. `--target-encoding` turns it on and reproduces cell E.
 
 ### Threshold sweep — the operational table
 
@@ -339,13 +358,17 @@ above: a random split inflates PR AUC by 50%. The three windows here are
 contiguous and disjoint in time, and the invariant is asserted in code
 ([`leakage.py`](src/ftlab/leakage.py)), not just intended.
 
-**Aggregates carry provenance.** `AggregateMaps` stores the index it was fit
-from, and `build_features` refuses to run if that index extends beyond the
-training window; a test constructs the realistic mistake — fitting card
-statistics before splitting — and asserts it raises. Measured above, this is
-worth only +0.6% PR AUC on the current feature set, because these aggregates are
-not target-derived. It is retained for the case it actually guards: a per-card
-fraud rate, where the same mistake would be severe.
+**Aggregates carry provenance.** `AggregateMaps` and `TargetEncoderMaps` store
+the index they were fit from, and `build_features` refuses to run if that index
+extends beyond the training window; a test constructs the realistic mistake —
+fitting card statistics before splitting — and asserts it raises. Measured
+above, this is worth +0.6% on the count-and-amount features and **+21.9%** on
+target encoding, which is the case it actually guards.
+
+**Target encoding is implemented but off.** Measured honestly it costs 2.1% of
+PR AUC. Keeping the code and disabling it is more useful than deleting it: it
+documents a negative result, and it is what makes the provenance guard's value
+measurable rather than asserted.
 
 **Cards unseen in training get NaN, not an imputed mean.** A card first observed
 in the test period genuinely has no history. Telling the model that is more
@@ -437,7 +460,7 @@ make data     # download IEEE-CIS training tables
 make profile  # data profile + split boundaries only
 make run      # full pipeline -> artifacts/
 make split-comparison  # naive vs time-aware split experiment
-make test     # 104 tests
+make test     # 113 tests
 ```
 
 To skip the TreeSHAP export and finish the analysis in about half the time:
@@ -473,7 +496,7 @@ set alongside the results. Re-running reproduces the reported numbers exactly.
 
 ### Testing
 
-104 tests, run on Python 3.11 and 3.12 in CI. They deliberately use synthetic
+113 tests, run on Python 3.11 and 3.12 in CI. They deliberately use synthetic
 fixtures rather than the Kaggle data — that data is not redistributable, and the
 logic worth guarding is the metric, threshold, cost, and leakage code, none of
 which needs the real dataset. Tests concentrate on the parts a reviewer would
@@ -511,7 +534,7 @@ src/ftlab/
   plots.py        figures
 scripts/
   download_data.py, profile_data.py, run_pipeline.py
-tests/            104 tests, synthetic fixtures only
+tests/            113 tests, synthetic fixtures only
 ```
 
 ## Downstream

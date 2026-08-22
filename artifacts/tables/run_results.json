@@ -611,5 +611,5 @@
     "metadata": "data/processed/alert_stream_metadata.json",
     "rows": 88581
   },
-  "runtime_seconds": 247.8
+  "runtime_seconds": 262.5
 }

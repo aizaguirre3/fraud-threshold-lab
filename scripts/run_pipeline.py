@@ -23,6 +23,7 @@ from ftlab.features import (
     align_categories,
     build_features,
     fit_behavioral_aggregates,
+    fit_target_encoders,
     to_model_matrix,
 )
 from ftlab.split import make_time_split, split_frames
@@ -71,6 +72,12 @@ def main() -> None:
     ap.add_argument("--quick", action="store_true",
                     help="Subsample the training window for a fast smoke run. "
                          "Numbers from a quick run are NOT reportable.")
+    ap.add_argument("--target-encoding", action="store_true",
+                    help="Add per-group fraud-rate features (out-of-fold within "
+                         "the training window). OFF by default: measured on the "
+                         "test window they cost 2.1%% of PR AUC, because a card's "
+                         "fraud rate from months ago does not transfer across the "
+                         "31-day gap to the test period. See the README.")
     ap.add_argument("--skip-export", action="store_true",
                     help="Skip the alert-stream export. The TreeSHAP pass over "
                          "all test rows is about half the total runtime, and "
@@ -106,7 +113,19 @@ def main() -> None:
     maps = fit_behavioral_aggregates(train_df)
     leakage.assert_fit_window_is_train_only(maps.fit_index, split.train_idx)
 
-    feats = build_features(df, maps, train_index=split.train_idx)
+    tmaps = None
+    if args.target_encoding:
+        tmaps = fit_target_encoders(train_df, seed=cfg.seed)
+        leakage.assert_fit_window_is_train_only(tmaps.fit_index, split.train_idx)
+        results["target_encoding"] = {
+            "columns": tmaps.column_names(),
+            "smoothing": tmaps.smoothing,
+            "prior": tmaps.prior,
+            "oof_folds": 5,
+        }
+
+    feats = build_features(df, maps, train_index=split.train_idx,
+                           target_maps=tmaps)
     tr, va, te = split_frames(feats, split)
     if args.quick:
         tr = feats.loc[train_df.index]

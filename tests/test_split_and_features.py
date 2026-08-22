@@ -152,3 +152,115 @@ def test_category_alignment_keeps_shared_levels_on_the_same_code():
     (aligned,) = align_categories(train, test)
     assert list(aligned["c"].cat.categories) == list(train["c"].cat.categories)
     assert aligned["c"].cat.codes.tolist() == [2, 1]
+
+
+# ------------------------------------------------------- target encoding
+
+
+def test_target_encoding_is_smoothed_toward_the_prior(synthetic_frame):
+    """A group seen once with one fraud must not encode to 1.0."""
+    from ftlab.features import fit_target_encoders
+
+    maps = fit_target_encoders(synthetic_frame, smoothing=20.0)
+    for tbl in maps.tables.values():
+        col = tbl.iloc[:, 0]
+        assert col.max() <= 1.0
+        assert col.min() >= 0.0
+        # Smoothing keeps every group well inside the extremes.
+        assert col.max() < 0.95
+
+
+def test_target_encoding_records_the_prior_it_smoothed_toward(synthetic_frame):
+    from ftlab.features import fit_target_encoders
+
+    maps = fit_target_encoders(synthetic_frame)
+    assert maps.prior == pytest.approx(synthetic_frame[TARGET].mean())
+
+
+def test_stronger_smoothing_pulls_groups_closer_to_the_prior(synthetic_frame):
+    from ftlab.features import fit_target_encoders
+
+    weak = fit_target_encoders(synthetic_frame, smoothing=1.0)
+    strong = fit_target_encoders(synthetic_frame, smoothing=500.0)
+    prior = weak.prior
+    key = next(iter(weak.tables))
+    weak_spread = (weak.tables[key].iloc[:, 0] - prior).abs().mean()
+    strong_spread = (strong.tables[key].iloc[:, 0] - prior).abs().mean()
+    assert strong_spread < weak_spread
+
+
+def test_target_encoding_carries_its_fit_window(synthetic_frame):
+    from ftlab.features import fit_target_encoders
+
+    split = make_time_split(synthetic_frame, SplitConfig())
+    maps = fit_target_encoders(synthetic_frame.loc[split.train_idx])
+    assert maps.fit_index.equals(split.train_idx)
+
+
+def test_target_encoding_fit_outside_the_training_window_is_rejected(synthetic_frame):
+    """The mistake that inflates PR AUC by 21.9%: encode before splitting."""
+    from ftlab.features import apply_target_encoders, fit_target_encoders
+    from ftlab.leakage import LeakageError
+
+    split = make_time_split(synthetic_frame, SplitConfig())
+    leaky = fit_target_encoders(synthetic_frame)  # fit on everything
+    with pytest.raises(LeakageError, match="outside the training window"):
+        apply_target_encoders(synthetic_frame, leaky, split.train_idx)
+
+
+def test_training_rows_receive_out_of_fold_encodings(synthetic_frame):
+    """A training row must not be scored with an encoding it helped produce.
+
+    The out-of-fold value differs from the full-fit value precisely because the
+    row's own label was excluded from it.
+    """
+    from ftlab.features import apply_target_encoders, fit_target_encoders
+
+    split = make_time_split(synthetic_frame, SplitConfig())
+    train = synthetic_frame.loc[split.train_idx]
+    maps = fit_target_encoders(train)
+    out = apply_target_encoders(synthetic_frame, maps, split.train_idx)
+
+    name = maps.column_names()[0]
+    prefix = name[len("te_"):]
+    full_fit = synthetic_frame.join(maps.tables[prefix], on=["card1"])[name]
+    oof = out.loc[split.train_idx, name]
+    differing = (oof - full_fit.loc[split.train_idx]).abs() > 1e-9
+    assert differing.mean() > 0.5  # most training rows must differ
+
+
+def test_non_training_rows_use_the_full_fit_encoding(synthetic_frame):
+    from ftlab.features import apply_target_encoders, fit_target_encoders
+
+    split = make_time_split(synthetic_frame, SplitConfig())
+    maps = fit_target_encoders(synthetic_frame.loc[split.train_idx])
+    out = apply_target_encoders(synthetic_frame, maps, split.train_idx)
+
+    name = maps.column_names()[0]
+    prefix = name[len("te_"):]
+    expected = synthetic_frame.join(maps.tables[prefix], on=["card1"])[name]
+    np.testing.assert_allclose(
+        out.loc[split.test_idx, name].to_numpy(dtype=float),
+        expected.loc[split.test_idx].to_numpy(dtype=float),
+        rtol=1e-6, equal_nan=True,
+    )
+
+
+def test_groups_unseen_in_training_get_no_encoding(synthetic_frame):
+    from ftlab.features import apply_target_encoders, fit_target_encoders
+
+    split = make_time_split(synthetic_frame, SplitConfig())
+    maps = fit_target_encoders(synthetic_frame.loc[split.train_idx])
+    frame = synthetic_frame.copy()
+    frame.loc[frame.index[-5:], "card1"] = 999_999
+    out = apply_target_encoders(frame, maps, split.train_idx)
+    assert out.loc[frame["card1"] == 999_999, "te_grp_card1"].isna().all()
+
+
+def test_build_features_requires_a_train_index_for_target_encoding(synthetic_frame):
+    from ftlab.features import build_features, fit_behavioral_aggregates, fit_target_encoders
+
+    maps = fit_behavioral_aggregates(synthetic_frame)
+    tmaps = fit_target_encoders(synthetic_frame)
+    with pytest.raises(ValueError, match="train_index is required"):
+        build_features(synthetic_frame, maps, target_maps=tmaps)

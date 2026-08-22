@@ -41,11 +41,14 @@ from ftlab import config, models
 from ftlab.config import TARGET
 from ftlab.data import load_joined
 from ftlab.features import (
+    AGGREGATE_KEYS,
     align_categories,
     apply_behavioral_aggregates,
+    apply_target_encoders,
     add_amount_features,
     add_time_features,
     fit_behavioral_aggregates,
+    fit_target_encoders,
     to_model_matrix,
 )
 from ftlab.split import make_time_split
@@ -126,6 +129,34 @@ def main() -> None:
     # feats_c already carries whole-dataset aggregates; only the split differs.
     results["D_time_split_leaky_aggregates"] = _fit_and_score(
         feats_c, tsplit.train_idx, tsplit.val_idx, tsplit.test_idx, cfg, "D")
+
+    # ---------------------------------------------------------------------
+    # Variants E and F repeat the provenance question with a *target-derived*
+    # feature family present. Cells A-D use only counts and amount statistics,
+    # and show the provenance guard buying almost nothing. That result is
+    # specific to features that do not touch the label; these two cells test
+    # what the guard is actually for.
+    # ---------------------------------------------------------------------
+    print("[E] time-aware split, target encoding fit correctly (train + OOF) ...")
+    tmaps_e = fit_target_encoders(df.loc[tsplit.train_idx], seed=cfg.seed)
+    feats_e = apply_target_encoders(feats_a, tmaps_e, tsplit.train_idx)
+    results["E_time_split_target_encoding_honest"] = _fit_and_score(
+        feats_e, tsplit.train_idx, tsplit.val_idx, tsplit.test_idx, cfg, "E")
+
+    print("[F] time-aware split, target encoding fit on the entire dataset ...")
+    # The realistic mistake: compute per-card fraud rates over everything, then
+    # split. No out-of-fold either, so each row's encoding contains its own label.
+    tmaps_f = fit_target_encoders(df, seed=cfg.seed)
+    feats_f = feats_a.copy()
+    for keys in AGGREGATE_KEYS:
+        prefix = "grp_" + "_".join(keys)
+        tbl = tmaps_f.tables.get(prefix)
+        if tbl is None:
+            continue
+        name = f"te_{prefix}"
+        feats_f[name] = feats_f.join(tbl, on=list(keys))[name].astype(np.float32)
+    results["F_time_split_target_encoding_leaked"] = _fit_and_score(
+        feats_f, tsplit.train_idx, tsplit.val_idx, tsplit.test_idx, cfg, "F")
 
     honest = results["A_time_split_honest"]
     summary = {

@@ -23,6 +23,18 @@
       "pr_auc": 0.5558908667013626,
       "pr_auc_no_skill_baseline": 0.03480430340592226,
       "pr_auc_lift_over_baseline": 15.97190037731865
+    },
+    "E_time_split_target_encoding_honest": {
+      "roc_auc": 0.8971150854112881,
+      "pr_auc": 0.5405739198797685,
+      "pr_auc_no_skill_baseline": 0.03480430340592226,
+      "pr_auc_lift_over_baseline": 15.531812649000901
+    },
+    "F_time_split_target_encoding_leaked": {
+      "roc_auc": 0.959474519274292,
+      "pr_auc": 0.673417919333416,
+      "pr_auc_no_skill_baseline": 0.03480430340592226,
+      "pr_auc_lift_over_baseline": 19.34869695506757
     }
   },
   "inflation_vs_honest": {
@@ -40,6 +52,16 @@
       "roc_auc_absolute": -0.00013987993960351552,
       "pr_auc_absolute": 0.003461503791937104,
       "pr_auc_relative_pct": 0.626596633768115
+    },
+    "E_time_split_target_encoding_honest": {
+      "roc_auc_absolute": -0.012619741966714337,
+      "pr_auc_absolute": -0.011855443029656909,
+      "pr_auc_relative_pct": -2.1460559169445688
+    },
+    "F_time_split_target_encoding_leaked": {
+      "roc_auc_absolute": 0.04973969189628946,
+      "pr_auc_absolute": 0.12098855642399053,
+      "pr_auc_relative_pct": 21.901181317877818
     }
   },
   "split_sizes": {
@@ -48,5 +70,5 @@
     "test": 88581
   },
   "seed": 20260808,
-  "runtime_seconds": 157.0
+  "runtime_seconds": 225.8
 }
