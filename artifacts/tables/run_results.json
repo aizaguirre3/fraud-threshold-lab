@@ -606,5 +606,10 @@
       "lift_vs_base": 1.4990487391840455
     }
   ],
-  "runtime_seconds": 135.9
+  "alert_stream": {
+    "path": "data/processed/alert_stream.parquet",
+    "metadata": "data/processed/alert_stream_metadata.json",
+    "rows": 88581
+  },
+  "runtime_seconds": 247.8
 }

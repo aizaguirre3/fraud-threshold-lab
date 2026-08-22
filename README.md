@@ -37,8 +37,14 @@ unflattering ones are here too, and there are several.
 9. **False positive characterization** — which legitimate behaviours get
    mistaken for fraud, as a structured artifact and as prose.
 
-Single command: `make all`. Runtime **136 seconds** end to end on an M5 MacBook
-Air, from raw CSV to every figure and table in this README.
+10. **Export a scored alert stream** — every scored transaction with its amount,
+    outcome, and top-5 TreeSHAP attributions, for the downstream queue
+    simulator to consume without needing this project's data or features.
+
+Single command: `make all`. Runtime **around 250 seconds** end to end on an M5
+MacBook Air (248 s and 274 s on two full runs), from raw CSV to every figure and
+table in this README. Roughly half of that is the TreeSHAP attribution pass over
+all 88,581 test rows; `--skip-export` finishes the analysis in about 140 seconds.
 
 ---
 
@@ -381,7 +387,7 @@ make all
 ```
 
 That runs `setup` (uv venv + pinned deps), `data` (downloads the two training
-tables, ~710 MB), `run` (the full pipeline, ~136 s), and `test`.
+tables, ~710 MB), `run` (the full pipeline, ~250 s), and `test`.
 
 Individual steps:
 
@@ -389,12 +395,35 @@ Individual steps:
 make data     # download IEEE-CIS training tables
 make profile  # data profile + split boundaries only
 make run      # full pipeline -> artifacts/
-make test     # 93 tests
+make test     # 104 tests
+```
+
+To skip the TreeSHAP export and finish the analysis in about half the time:
+
+```bash
+.venv/bin/python scripts/run_pipeline.py --skip-export
 ```
 
 Outputs land in `artifacts/tables/` (CSV + `run_results.json` containing every
-number in this README), `artifacts/figures/`, and
-`artifacts/false_positive_profile.md`.
+number in this README), `artifacts/figures/`,
+`artifacts/false_positive_profile.md`, and `data/processed/`.
+
+### The exported alert stream
+
+`data/processed/alert_stream.parquet` carries all 88,581 scored test
+transactions — id, timestamp, amount, outcome, raw and recalibrated scores, a
+few interpretable descriptors, and the **top five TreeSHAP contributors per
+transaction** with their values and signed contributions. A JSON sidecar records
+the model, the operating threshold, and the cost assumptions that produced it.
+
+Attributions come from LightGBM's `pred_contrib`, which returns exact TreeSHAP
+values during prediction — no `shap` dependency, and additive by construction
+(base value plus contributions equals the raw margin, asserted in the tests).
+
+The stream is not filtered to alerts. A consumer picks its own threshold and its
+own auto-close band, and cannot explore either if the stream arrives
+pre-filtered. It is also not committed: it is derived from IEEE-CIS data, which
+is not redistributable.
 
 **Reproducibility:** dependencies are pinned in `pyproject.toml`, the seed is
 fixed at `config.RANDOM_SEED`, and `run_results.json` records the full parameter
@@ -402,7 +431,7 @@ set alongside the results. Re-running reproduces the reported numbers exactly.
 
 ### Testing
 
-93 tests, run on Python 3.11 and 3.12 in CI. They deliberately use synthetic
+104 tests, run on Python 3.11 and 3.12 in CI. They deliberately use synthetic
 fixtures rather than the Kaggle data — that data is not redistributable, and the
 logic worth guarding is the metric, threshold, cost, and leakage code, none of
 which needs the real dataset. Tests concentrate on the parts a reviewer would
@@ -416,6 +445,9 @@ question:
   F1 point on cost
 - each leakage check demonstrated firing on a leak it is meant to catch
 - Platt monotonicity, asserted so the matched-volume result cannot silently change
+- TreeSHAP additivity (base value plus contributions equals the raw margin) and
+  a parquet round-trip of the exported stream — the round-trip is a regression
+  test for a mixed-dtype failure that only surfaced after a full pipeline run
 
 ---
 
@@ -433,11 +465,19 @@ src/ftlab/
   cost.py         cost-sensitive selection and sensitivity
   calibration.py  ECE, reliability, Platt, isotonic
   fpanalysis.py   false-positive segmentation and prose generation
+  export.py       scored alert stream + TreeSHAP attributions for downstream
   plots.py        figures
 scripts/
   download_data.py, profile_data.py, run_pipeline.py
-tests/            93 tests, synthetic fixtures only
+tests/            104 tests, synthetic fixtures only
 ```
+
+## Downstream
+
+The exported alert stream feeds `alert-triage-sim`, which simulates a review
+queue with finite analyst capacity over these scores and compares
+prioritization policies. This project decides *where the threshold goes*; that
+one decides *what happens to the alerts it produces*.
 
 ## Data source
 

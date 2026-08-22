@@ -16,7 +16,7 @@ import pandas as pd
 from sklearn.metrics import precision_recall_curve
 
 from ftlab import calibration as cal
-from ftlab import config, cost, fpanalysis, leakage, models, plots
+from ftlab import config, cost, export, fpanalysis, leakage, models, plots
 from ftlab.config import AMOUNT, TARGET
 from ftlab.data import load_joined
 from ftlab.features import (
@@ -71,6 +71,10 @@ def main() -> None:
     ap.add_argument("--quick", action="store_true",
                     help="Subsample the training window for a fast smoke run. "
                          "Numbers from a quick run are NOT reportable.")
+    ap.add_argument("--skip-export", action="store_true",
+                    help="Skip the alert-stream export. The TreeSHAP pass over "
+                         "all test rows is about half the total runtime, and "
+                         "nothing reported in the README depends on it.")
     args = ap.parse_args()
 
     _silence_accelerate_matmul_warnings()
@@ -265,6 +269,46 @@ def main() -> None:
             "score_isotonic": iso_test,
         }
     ).to_csv(config.DATA_PROCESSED / "test_scores.csv", index=False)
+
+    # Self-contained stream for the downstream queue simulator, including
+    # per-alert TreeSHAP attributions so it never needs this feature pipeline.
+    if args.skip_export:
+        print("      skipping alert stream export (--skip-export)")
+        results["alert_stream"] = {"skipped": True}
+        results["runtime_seconds"] = round(time.time() - t0, 1)
+        (config.TABLES / "run_results.json").write_text(
+            json.dumps(results, indent=2, default=_jsonable)
+        )
+        print(f"\nDone in {results['runtime_seconds']}s. "
+              f"Results -> artifacts/tables/run_results.json")
+        return
+
+    print("      exporting alert stream ...")
+    stream = export.build_alert_stream(
+        te, X_te, best.model,
+        {"score_raw": raw_test, "score_platt": platt_test, "score_isotonic": iso_test},
+    )
+    stream_path, meta_path = export.write_alert_stream(
+        stream,
+        {
+            "source_project": "fraud-threshold-lab",
+            "model": best.name,
+            "model_test_metrics": best.metrics["test"],
+            "operating_threshold": operating_threshold,
+            "operating_point": operating_point,
+            "cost_assumptions": comparison["assumptions"],
+            "split": results["split"],
+            "seed": cfg.seed,
+        },
+        config.DATA_PROCESSED,
+    )
+    results["alert_stream"] = {
+        "path": str(stream_path.relative_to(config.ROOT)),
+        "metadata": str(meta_path.relative_to(config.ROOT)),
+        "rows": int(len(stream)),
+    }
+    print(f"      alert stream -> {stream_path.relative_to(config.ROOT)} "
+          f"({len(stream):,} rows)")
 
     results["runtime_seconds"] = round(time.time() - t0, 1)
     (config.TABLES / "run_results.json").write_text(
