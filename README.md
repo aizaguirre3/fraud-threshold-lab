@@ -111,6 +111,47 @@ threshold selection, cost optimisation, calibration — depends on the score bei
 a usable probability rather than just a ranking. Reported because it is the
 opposite of the default advice.
 
+### What a naive validation setup would have reported
+
+The time-aware split is the single most consequential decision in this project,
+so it is measured rather than asserted. Four variants, identical features, model,
+seed, and split proportions — only row assignment and aggregate provenance differ
+(`make split-comparison`):
+
+| Split | Aggregates fit on | ROC AUC | PR AUC | vs honest |
+|---|---|---|---|---|
+| **Time-aware** | **training window** | **0.9097** | **0.5524** | — |
+| Time-aware | entire dataset | 0.9096 | 0.5559 | +0.6% |
+| Random | random training subset | 0.9673 | 0.8281 | **+49.9%** |
+| Random | entire dataset | 0.9676 | 0.8298 | **+50.2%** |
+
+**A random split would have reported PR AUC 0.83 instead of 0.55 — a 50%
+overstatement of the model's real forward-looking performance.** ROC AUC inflates
+too, 0.9097 to 0.9676, but far less visibly: it looks like a good model becoming
+a slightly better one, while PR AUC exposes the gap. Anyone reading only ROC AUC
+would barely notice they had been misled.
+
+The mechanism is that cards recur. A random split puts a card's later
+transactions in training and its earlier ones in test, so the model scores
+behaviour it has already seen the future of. That is not a subtle statistical
+nicety — it is half the reported performance.
+
+**A negative result about this project's own design.** Splitting on time is
+worth 50% of PR AUC. Fitting the behavioural aggregates on the whole dataset
+instead of the training window is worth **+0.6%**, which is inside run-to-run
+noise. The provenance machinery in `leakage.py` — the fitted index carried on
+`AggregateMaps`, the assertion in `build_features` — buys almost no measurable
+protection here.
+
+It is kept anyway, and the reason is specific rather than defensive: these
+aggregates are counts and amount statistics, which are not target-derived.
+Contaminating a card's mean transaction amount with test-period rows barely
+moves it. The moment anyone adds a per-card *fraud rate* — the most natural next
+feature, and one this codebase invites — the same leak becomes catastrophic
+rather than negligible. The guard is insurance against the feature nobody has
+written yet, and this table is the honest statement of what it currently costs
+and currently returns.
+
 ### Threshold sweep — the operational table
 
 What it costs to hit a given recall target on the test window (88,581
@@ -293,18 +334,18 @@ Machine-readable artifacts: [`false_positive_segments.csv`](artifacts/tables/fal
 
 ## Design decisions
 
-**Time-aware split, not random.** Fraud is temporal and cards recur. A random
-split lets the model see a card's later behaviour while scoring its earlier
-transactions, which inflates every metric. The three windows here are contiguous
-and disjoint in time, and the invariant is asserted in code
+**Time-aware split, not random.** Fraud is temporal and cards recur. Measured
+above: a random split inflates PR AUC by 50%. The three windows here are
+contiguous and disjoint in time, and the invariant is asserted in code
 ([`leakage.py`](src/ftlab/leakage.py)), not just intended.
 
-**Aggregates carry provenance.** Per-card and per-address statistics are the
-strongest features available and the easiest place to leak. `AggregateMaps`
-stores the index it was fit from, and `build_features` refuses to run if that
-index extends beyond the training window. There is a test that constructs the
-realistic mistake — fitting card statistics before splitting — and asserts it
-raises.
+**Aggregates carry provenance.** `AggregateMaps` stores the index it was fit
+from, and `build_features` refuses to run if that index extends beyond the
+training window; a test constructs the realistic mistake — fitting card
+statistics before splitting — and asserts it raises. Measured above, this is
+worth only +0.6% PR AUC on the current feature set, because these aggregates are
+not target-derived. It is retained for the case it actually guards: a per-card
+fraud rate, where the same mistake would be severe.
 
 **Cards unseen in training get NaN, not an imputed mean.** A card first observed
 in the test period genuinely has no history. Telling the model that is more
@@ -395,6 +436,7 @@ Individual steps:
 make data     # download IEEE-CIS training tables
 make profile  # data profile + split boundaries only
 make run      # full pipeline -> artifacts/
+make split-comparison  # naive vs time-aware split experiment
 make test     # 104 tests
 ```
 

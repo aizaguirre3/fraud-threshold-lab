@@ -1,0 +1,52 @@
+{
+  "variants": {
+    "A_time_split_honest": {
+      "roc_auc": 0.9097348273780025,
+      "pr_auc": 0.5524293629094255,
+      "pr_auc_no_skill_baseline": 0.03480430340592226,
+      "pr_auc_lift_over_baseline": 15.872444176412525
+    },
+    "B_random_split_clean_aggregates": {
+      "roc_auc": 0.9673329895524772,
+      "pr_auc": 0.8280855006274674,
+      "pr_auc_no_skill_baseline": 0.03445434122441607,
+      "pr_auc_lift_over_baseline": 24.034286281481553
+    },
+    "C_random_split_leaky_aggregates": {
+      "roc_auc": 0.9675769113254559,
+      "pr_auc": 0.829826973155817,
+      "pr_auc_no_skill_baseline": 0.03445434122441607,
+      "pr_auc_lift_over_baseline": 24.084830638635463
+    },
+    "D_time_split_leaky_aggregates": {
+      "roc_auc": 0.909594947438399,
+      "pr_auc": 0.5558908667013626,
+      "pr_auc_no_skill_baseline": 0.03480430340592226,
+      "pr_auc_lift_over_baseline": 15.97190037731865
+    }
+  },
+  "inflation_vs_honest": {
+    "B_random_split_clean_aggregates": {
+      "roc_auc_absolute": 0.057598162174474665,
+      "pr_auc_absolute": 0.275656137718042,
+      "pr_auc_relative_pct": 49.89889318450976
+    },
+    "C_random_split_leaky_aggregates": {
+      "roc_auc_absolute": 0.05784208394745338,
+      "pr_auc_absolute": 0.27739761024639153,
+      "pr_auc_relative_pct": 50.214132135455074
+    },
+    "D_time_split_leaky_aggregates": {
+      "roc_auc_absolute": -0.00013987993960351552,
+      "pr_auc_absolute": 0.003461503791937104,
+      "pr_auc_relative_pct": 0.626596633768115
+    }
+  },
+  "split_sizes": {
+    "train": 413378,
+    "val": 88581,
+    "test": 88581
+  },
+  "seed": 20260808,
+  "runtime_seconds": 157.0
+}

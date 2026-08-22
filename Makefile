@@ -1,7 +1,7 @@
 PY := .venv/bin/python
 UV := uv
 
-.PHONY: all setup data profile run test lint clean
+.PHONY: all setup data profile run split-comparison test lint clean
 
 ## Full reproduction from raw data to every reported number.
 all: setup data run test
@@ -20,6 +20,10 @@ profile:
 
 run:
 	$(PY) scripts/run_pipeline.py
+
+## Measure what a naive validation setup would have reported.
+split-comparison:
+	$(PY) scripts/split_comparison.py
 
 test:
 	$(PY) -m pytest
