@@ -351,6 +351,46 @@ Machine-readable artifacts: [`false_positive_segments.csv`](artifacts/tables/fal
 
 ---
 
+## The same sweep in three languages
+
+The threshold sweep is the computation every operational number is read off, so
+it is implemented independently three times:
+
+| Implementation | File | Executed? |
+|---|---|---|
+| Python | [`src/ftlab/threshold.py`](src/ftlab/threshold.py) | Canonical; the source of every number above |
+| SQL | [`sql/threshold_sweep.sql`](sql/threshold_sweep.sql) | **Yes — run in CI and checked against Python** |
+| SAS 9.4 | [`sas/threshold_sweep.sas`](sas/threshold_sweep.sas) | **No — no SAS licence on the build machine** |
+
+**The SQL and Python implementations agree exactly.** The test suite runs the
+SQL in DuckDB and compares both at 25 identical thresholds spread across the
+sweep; alert volume, TP, FP, FN, precision, recall, and fraud dollars match on
+every one. The SQL walks all **87,526** achievable cut points via window
+functions against Python's 501-point grid, so it also finds a marginally better
+cost optimum — which is the expected direction and is asserted as such.
+
+**The SAS program is not verified, and the file says so at the top.** It
+implements the same algorithm — sort descending, accumulate in a data step,
+tabulate with `PROC SQL`, plus the cost sensitivity sweep — and is written
+against SAS 9.4 to run on SAS OnDemand for Academics. But it has not been
+executed, so its output is not reported anywhere in this README. What the SQL
+check establishes is that the *algorithm* is right in a second engine; only the
+SAS syntax is unexercised.
+
+### A trap worth documenting
+
+The SQL and Python results initially disagreed on alert volume by exactly one
+row in the middle of the sweep, while TP and dollar totals matched perfectly.
+That looks precisely like an off-by-one in a cumulative sum, and it is not.
+
+**pandas' default CSV float parser is not correctly rounded.** It parsed
+`score_raw` to doubles differing from DuckDB's in the last few bits — enough to
+move one row across a threshold boundary. `float_precision="round_trip"` makes
+the two engines agree bit for bit. There is a test pinning this, because the
+next person to compare a pandas result against a database will hit it too.
+
+---
+
 ## Design decisions
 
 **Time-aware split, not random.** Fraud is temporal and cards recur. Measured
@@ -460,7 +500,7 @@ make data     # download IEEE-CIS training tables
 make profile  # data profile + split boundaries only
 make run      # full pipeline -> artifacts/
 make split-comparison  # naive vs time-aware split experiment
-make test     # 113 tests
+make test     # 125 tests
 ```
 
 To skip the TreeSHAP export and finish the analysis in about half the time:
@@ -496,7 +536,7 @@ set alongside the results. Re-running reproduces the reported numbers exactly.
 
 ### Testing
 
-113 tests, run on Python 3.11 and 3.12 in CI. They deliberately use synthetic
+125 tests, run on Python 3.11 and 3.12 in CI. They deliberately use synthetic
 fixtures rather than the Kaggle data — that data is not redistributable, and the
 logic worth guarding is the metric, threshold, cost, and leakage code, none of
 which needs the real dataset. Tests concentrate on the parts a reviewer would
@@ -513,6 +553,8 @@ question:
 - TreeSHAP additivity (base value plus contributions equals the raw margin) and
   a parquet round-trip of the exported stream — the round-trip is a regression
   test for a mixed-dtype failure that only surfaced after a full pipeline run
+- the SQL implementation of the sweep matching Python exactly at 25 identical
+  thresholds, and the pandas float-parsing trap that made them appear to differ
 
 ---
 
@@ -531,10 +573,13 @@ src/ftlab/
   calibration.py  ECE, reliability, Platt, isotonic
   fpanalysis.py   false-positive segmentation and prose generation
   export.py       scored alert stream + TreeSHAP attributions for downstream
+  sqlsweep.py     runs the SQL sweep and cross-checks it against Python
   plots.py        figures
+sql/threshold_sweep.sql   the sweep in ANSI SQL (executed in CI)
+sas/threshold_sweep.sas   the sweep in SAS 9.4 (not executed here)
 scripts/
-  download_data.py, profile_data.py, run_pipeline.py
-tests/            113 tests, synthetic fixtures only
+  download_data.py, profile_data.py, run_pipeline.py, split_comparison.py
+tests/            125 tests, synthetic fixtures only
 ```
 
 ## Downstream

@@ -18,6 +18,9 @@ dependencies = [
 dev = [
     "pytest==8.3.4",
     "pytest-cov==6.0.0",
+    # Executes sql/threshold_sweep.sql so the SQL implementation is verified
+    # against the Python one in CI.
+    "duckdb==1.1.3",
 ]
 
 [build-system]

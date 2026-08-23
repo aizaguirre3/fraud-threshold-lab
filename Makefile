@@ -1,7 +1,7 @@
 PY := .venv/bin/python
 UV := uv
 
-.PHONY: all setup data profile run split-comparison test lint clean
+.PHONY: all setup data profile run split-comparison sql-check test lint clean
 
 ## Full reproduction from raw data to every reported number.
 all: setup data run test
@@ -24,6 +24,12 @@ run:
 ## Measure what a naive validation setup would have reported.
 split-comparison:
 	$(PY) scripts/split_comparison.py
+
+## Run the SQL implementation and cross-check it against Python.
+sql-check:
+	$(PY) -c "import json; from ftlab.sqlsweep import compare_with_python; \
+	from ftlab.config import DATA_PROCESSED; \
+	print(json.dumps(compare_with_python(DATA_PROCESSED/'test_scores.csv'), indent=2))"
 
 test:
 	$(PY) -m pytest
